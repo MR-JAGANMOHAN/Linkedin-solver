@@ -1,0 +1,38 @@
+name: LinkedIn Games Solver
+
+on:
+  schedule:
+    # Daily at 12:05 AM IST
+    - cron: '35 18 * * *'
+
+  workflow_dispatch:
+
+concurrency:
+  group: linkedin-games
+  cancel-in-progress: true
+
+jobs:
+  solve:
+    runs-on: ubuntu-latest
+
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Google Chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run solver
+        run: |
+          python run.py
