@@ -2,8 +2,8 @@ import os
 import time
 from linkedin_games_scraper import GameSolver
 
-EMAIL = os.getenv("LINKEDIN_EMAIL")
-PASSWORD = os.getenv("LINKEDIN_PASSWORD")
+EMAIL = os.getenv("jaganpenke124@gmail.com")
+PASSWORD = os.getenv("19428-M-039")
 
 if not EMAIL or not PASSWORD:
     raise Exception("Missing LINKEDIN_EMAIL or LINKEDIN_PASSWORD GitHub secrets")
