@@ -1,46 +1,32 @@
 import sys
 import time
 import traceback
-
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
+import os
 
 from linkedin_games_scraper import GameSolver
 
 MAX_RETRIES = 3
 
-
-def create_driver():
-    chrome_options = Options()
-
-    chrome_options.add_argument("--headless=new")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_argument("--disable-extensions")
-    chrome_options.add_argument("--dns-prefetch-disable")
-
-    driver = webdriver.Chrome(options=chrome_options)
-
-    return driver
+# Better Chrome stability in GitHub Actions
+os.environ["CHROME_EXTRA_ARGS"] = (
+    "--headless=new "
+    "--no-sandbox "
+    "--disable-dev-shm-usage "
+    "--disable-gpu "
+    "--window-size=1920,1080 "
+    "--disable-blink-features=AutomationControlled "
+    "--disable-extensions "
+    "--dns-prefetch-disable"
+)
 
 
 def solve_games():
-    driver = create_driver()
-
-    solver = GameSolver(
-        driver=driver,
-        headless=True
-    )
+    solver = GameSolver(headless=True)
 
     results = solver.solve_all_games()
 
     print("\n===== RESULTS =====")
     print(results)
-
-    driver.quit()
 
     return results
 
