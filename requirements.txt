@@ -1,0 +1,4 @@
+linkedin-games-scraper
+selenium
+webdriver-manager
+requests

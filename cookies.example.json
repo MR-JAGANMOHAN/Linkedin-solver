@@ -1,0 +1,10 @@
+[
+  {
+    "domain": ".linkedin.com",
+    "name": "li_at",
+    "value": "PASTE_YOUR_COOKIE_VALUE",
+    "path": "/",
+    "secure": true,
+    "httpOnly": true
+  }
+]
