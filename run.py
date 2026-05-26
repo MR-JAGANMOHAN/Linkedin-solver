@@ -2,18 +2,15 @@ import sys
 import time
 import traceback
 
-from linkedin_games_scraper import LinkedInGamesScraper
+from linkedin_games_scraper import GameSolver
 
 MAX_RETRIES = 3
 
 
 def solve_games():
-    scraper = LinkedInGamesScraper(
-        headless=True,
-        cookies_file="cookies.json"
-    )
+    solver = GameSolver(headless=True)
 
-    results = scraper.solve_all_games()
+    results = solver.solve_all_games()
 
     print("\n===== RESULTS =====")
     print(results)
