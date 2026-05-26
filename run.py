@@ -1,58 +1,61 @@
-import sys
-import time
 import traceback
-import os
+import time
 
 from linkedin_games_scraper import GameSolver
 
-MAX_RETRIES = 3
-
-# Better Chrome stability in GitHub Actions
-os.environ["CHROME_EXTRA_ARGS"] = (
-    "--headless=new "
-    "--no-sandbox "
-    "--disable-dev-shm-usage "
-    "--disable-gpu "
-    "--window-size=1920,1080 "
-    "--disable-blink-features=AutomationControlled "
-    "--disable-extensions "
-    "--dns-prefetch-disable"
-)
+MAX_RETRIES = 2
 
 
-def solve_games():
-    solver = GameSolver(headless=True)
+def safe_run(name, func):
+    try:
+        print(f"\n===== SOLVING {name} =====\n")
 
-    results = solver.solve_all_games()
+        result = func()
 
-    print("\n===== RESULTS =====")
-    print(results)
+        print(f"\n{name} SUCCESS")
+        print(result)
 
-    return results
+    except Exception as e:
+        print(f"\n{name} FAILED")
+        print(str(e))
+        traceback.print_exc()
 
 
-if __name__ == "__main__":
-    success = False
+for attempt in range(1, MAX_RETRIES + 1):
+    print(f"\n========== ATTEMPT {attempt} ==========\n")
 
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            print(f"\nAttempt {attempt}/{MAX_RETRIES}\n")
+    try:
+        solver = GameSolver(headless=True)
 
-            solve_games()
+        safe_run("Pinpoint", solver.solve_pinpoint)
 
-            print("\nAll games solved successfully")
-            success = True
-            break
+        time.sleep(5)
 
-        except Exception as e:
-            print("\nERROR:")
-            print(str(e))
-            traceback.print_exc()
+        safe_run("CrossClimb", solver.solve_crossclimb)
 
-            if attempt < MAX_RETRIES:
-                print("\nRetrying in 30 seconds...\n")
-                time.sleep(30)
+        time.sleep(5)
 
-    if not success:
-        print("\nFAILED AFTER ALL RETRIES")
-        sys.exit(1)
+        safe_run("Queens", solver.solve_queens)
+
+        time.sleep(5)
+
+        safe_run("Zip", solver.solve_zip)
+
+        time.sleep(5)
+
+        safe_run("Tango", solver.solve_tango)
+
+        time.sleep(5)
+
+        safe_run("Mini Sudoku", solver.solve_mini_sudoku)
+
+        print("\n===== FINISHED ALL GAMES =====\n")
+
+        break
+
+    except Exception as e:
+        print("\nGLOBAL FAILURE")
+        print(str(e))
+        traceback.print_exc()
+
+        time.sleep(20)
