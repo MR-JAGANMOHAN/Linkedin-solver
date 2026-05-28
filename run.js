@@ -125,10 +125,10 @@ const solverScript =
       console.log(
         'Injecting solver...'
       );
-
-      await page.addScriptTag({
-        content: solverScript
-      });
+      
+      await page.evaluate(solverScript);
+      
+      await page.waitForTimeout(7000);
 
       ////////////////////////////////////////////////////
       // WAIT SOLVER
