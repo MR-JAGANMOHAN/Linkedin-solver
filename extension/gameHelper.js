@@ -1,3 +1,4 @@
+console.log("[Game Bot] LOADED");
 const overrideXhr = (window, callback) => {
     const _open = window.XMLHttpRequest.prototype.open;
     const _setRequestHeader = window.XMLHttpRequest.prototype.setRequestHeader;
@@ -168,6 +169,10 @@ const solverPatchesGamePuzzle = async (answer) => {
 }
 
 overrideXhr(window, (data) => {
+    console.log(
+      "[Game Bot] XHR:",
+      data.data.requestUrl
+    );
     if (data.data.requestUrl.includes("queryId=voyagerIdentityDashGames.")) {
         const response_data = JSON.parse(data.data.responseText);
         if (response_data?.included?.[0] && "gamePuzzle" in response_data.included[0])
@@ -178,7 +183,10 @@ overrideXhr(window, (data) => {
         const gameName = Object.keys(gamePuzzle).find(key => gamePuzzle[key] !== null);
         switch (gameName) {
             case "blueprintGamePuzzle":
-                console.log("[Game Bot]", gamePuzzle.blueprintGamePuzzle.solutions[0]);
+                console.log(
+                    "[Game Bot] PINPOINT ANSWER:",
+                    gamePuzzle.blueprintGamePuzzle.solutions[0]
+                );
                 onElementReady(".pr-game-web__aux-controls", () => {
                     if (document.querySelector(".games-share-footer__share-btn")) return;
                     solverBlueprintGamePuzzle(gamePuzzle.blueprintGamePuzzle.solutions[0]);
