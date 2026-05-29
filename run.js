@@ -1,179 +1,92 @@
 import { chromium } from 'playwright';
-import fs from 'fs';
+import path from 'path';
 
 const games = [
-  {
-    name: 'Pinpoint',
-    url: 'https://www.linkedin.com/games/pinpoint/'
-  },
-  {
-    name: 'Crossclimb',
-    url: 'https://www.linkedin.com/games/crossclimb/'
-  },
-  {
-    name: 'ZIP',
-    url: 'https://www.linkedin.com/games/zip/'
-  },
-  {
-    name: 'Tango',
-    url: 'https://www.linkedin.com/games/tango/'
-  },
-  {
-    name: 'Queens',
-    url: 'https://www.linkedin.com/games/queens/'
-  },
-  {
-    name: 'Mini Sudoku',
-    url: 'https://www.linkedin.com/games/mini-sudoku/'
-  },
-  {
-    name: 'Patches',
-    url: 'https://www.linkedin.com/games/patches/'
-  }
+  'https://www.linkedin.com/games/pinpoint/',
+  'https://www.linkedin.com/games/crossclimb/',
+  'https://www.linkedin.com/games/zip/',
+  'https://www.linkedin.com/games/tango/',
+  'https://www.linkedin.com/games/queens/',
+  'https://www.linkedin.com/games/mini-sudoku/',
+  'https://www.linkedin.com/games/patches/'
 ];
+
+const extensionPath =
+  path.join(process.cwd(), 'extension');
 
 (async () => {
 
-  console.log('Launching Chromium...');
+  console.log('Launching Chromium');
 
-  const browser = await chromium.launch({
-    headless: true
-  });
+  const context =
+    await chromium.launchPersistentContext(
+      './profile',
+      {
+        headless: false,
 
-  const context = await browser.newContext({
-    storageState: 'cookies.json'
-  });
+        storageState: 'cookies.json',
 
-  //////////////////////////////////////////////////////
-  // LOAD SOLVER BEFORE ANY PAGE LOADS
-  //////////////////////////////////////////////////////
-
-  const solverScript =
-    fs.readFileSync('./solver.js', 'utf8');
-
-  await context.addInitScript({
-    content: solverScript
-  });
-
-  //////////////////////////////////////////////////////
-  // SINGLE PAGE REUSE
-  //////////////////////////////////////////////////////
+        args: [
+          `--disable-extensions-except=${extensionPath}`,
+          `--load-extension=${extensionPath}`
+        ]
+      }
+    );
 
   const page =
     await context.newPage();
 
-  //////////////////////////////////////////////////////
-  // PROCESS GAMES
-  //////////////////////////////////////////////////////
+  page.on('console', msg => {
+    console.log(
+      '[BROWSER]',
+      msg.text()
+    );
+  });
 
   for (const game of games) {
 
     try {
 
-      console.log('\n==============================');
-      console.log('Opening:', game.name);
-      console.log(game.url);
+      console.log(
+        '\n======================'
+      );
 
-      ////////////////////////////////////////////////////
-      // NAVIGATE
-      ////////////////////////////////////////////////////
+      console.log(
+        'Opening:',
+        game
+      );
 
       await page.goto(
-        game.url,
+        game,
         {
-          waitUntil: 'domcontentloaded',
+          waitUntil:
+            'domcontentloaded',
           timeout: 30000
         }
       );
 
-      console.log('Page loaded');
-
-      ////////////////////////////////////////////////////
-      // WAIT FOR LINKEDIN JS
-      ////////////////////////////////////////////////////
-
-      await page.waitForTimeout(10000);
-
-      ////////////////////////////////////////////////////
-      // CHECK IF ALREADY SOLVED
-      ////////////////////////////////////////////////////
-
-      const bodyText =
-        await page.textContent('body');
-
-      const alreadySolved =
-        bodyText?.includes('See puzzle') ||
-        bodyText?.includes('See results');
-
-      if (alreadySolved) {
-
-        console.log(
-          'Already solved:',
-          game.name
-        );
-
-        continue;
-      }
-
-      ////////////////////////////////////////////////////
-      // GIVE SOLVER TIME
-      ////////////////////////////////////////////////////
-
-      console.log(
-        'Waiting for solver...'
+      await page.waitForTimeout(
+        8000
       );
 
-      await page.waitForTimeout(10000);
-
-      ////////////////////////////////////////////////////
-      // VERIFY
-      ////////////////////////////////////////////////////
-
-      const afterText =
-        await page.textContent('body');
-
-      const solvedNow =
-        afterText?.includes('See puzzle') ||
-        afterText?.includes('See results');
-
-      if (solvedNow) {
-
-        console.log(
-          'Solved:',
-          game.name
-        );
-
-      } else {
-
-        console.log(
-          'No solved state detected:',
-          game.name
-        );
-      }
+      console.log(
+        'Finished:',
+        game
+      );
 
     } catch (err) {
 
       console.log(
         'FAILED:',
-        game.name
+        game
       );
 
       console.log(
         err.message
       );
-
-      continue;
     }
   }
 
-  //////////////////////////////////////////////////////
-  // DONE
-  //////////////////////////////////////////////////////
-
-  console.log('\n==============================');
-  console.log('All games processed');
-  console.log('Closing browser');
-
-  await browser.close();
+  await context.close();
 
 })();
