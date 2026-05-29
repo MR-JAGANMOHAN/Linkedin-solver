@@ -2,7 +2,7 @@ name: LinkedIn Games Solver
 
 on:
   schedule:
-    - cron: '0 4 * * *'
+    - cron: '30 14 * * *'
   workflow_dispatch:
 
 jobs:
