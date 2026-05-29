@@ -32,51 +32,50 @@ const games = [
   }
 ];
 
-const solverScript =
-  fs.readFileSync('./solver.js', 'utf8');
-
 (async () => {
 
-  console.log(
-    'Launching Chromium...'
-  );
+  console.log('Launching Chromium...');
 
-  const browser =
-    await chromium.launch({
-      headless: true
-    });
+  const browser = await chromium.launch({
+    headless: true
+  });
 
-  const context =
-    await browser.newContext({
-      storageState: 'cookies.json'
-    });
+  const context = await browser.newContext({
+    storageState: 'cookies.json'
+  });
+
+  //////////////////////////////////////////////////////
+  // LOAD SOLVER BEFORE ANY PAGE LOADS
+  //////////////////////////////////////////////////////
+
+  const solverScript =
+    fs.readFileSync('./solver.js', 'utf8');
+
+  await context.addInitScript({
+    content: solverScript
+  });
+
+  //////////////////////////////////////////////////////
+  // SINGLE PAGE REUSE
+  //////////////////////////////////////////////////////
 
   const page =
     await context.newPage();
 
-  ////////////////////////////////////////////////////////
-  // LOOP GAMES
-  ////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////
+  // PROCESS GAMES
+  //////////////////////////////////////////////////////
 
   for (const game of games) {
 
     try {
 
-      console.log(
-        '\\n=============================='
-      );
-
-      console.log(
-        'Opening:',
-        game.name
-      );
-
-      console.log(
-        game.url
-      );
+      console.log('\n==============================');
+      console.log('Opening:', game.name);
+      console.log(game.url);
 
       ////////////////////////////////////////////////////
-      // OPEN PAGE
+      // NAVIGATE
       ////////////////////////////////////////////////////
 
       await page.goto(
@@ -87,26 +86,24 @@ const solverScript =
         }
       );
 
-      console.log(
-        'Page loaded'
-      );
+      console.log('Page loaded');
 
       ////////////////////////////////////////////////////
-      // WAIT FULL RENDER
+      // WAIT FOR LINKEDIN JS
       ////////////////////////////////////////////////////
 
-      await page.waitForTimeout(5000);
+      await page.waitForTimeout(10000);
 
       ////////////////////////////////////////////////////
-      // CHECK SOLVED STATE
+      // CHECK IF ALREADY SOLVED
       ////////////////////////////////////////////////////
 
       const bodyText =
         await page.textContent('body');
 
       const alreadySolved =
-        bodyText.includes('See puzzle') ||
-        bodyText.includes('See results');
+        bodyText?.includes('See puzzle') ||
+        bodyText?.includes('See results');
 
       if (alreadySolved) {
 
@@ -119,45 +116,37 @@ const solverScript =
       }
 
       ////////////////////////////////////////////////////
-      // INJECT SOLVER
+      // GIVE SOLVER TIME
       ////////////////////////////////////////////////////
 
       console.log(
-        'Injecting solver...'
+        'Waiting for solver...'
       );
-      
-      await page.evaluate(solverScript);
-      
-      await page.waitForTimeout(7000);
+
+      await page.waitForTimeout(10000);
 
       ////////////////////////////////////////////////////
-      // WAIT SOLVER
-      ////////////////////////////////////////////////////
-
-      await page.waitForTimeout(7000);
-
-      ////////////////////////////////////////////////////
-      // CHECK RESULT
+      // VERIFY
       ////////////////////////////////////////////////////
 
       const afterText =
         await page.textContent('body');
 
       const solvedNow =
-        afterText.includes('See puzzle') ||
-        afterText.includes('See results');
+        afterText?.includes('See puzzle') ||
+        afterText?.includes('See results');
 
       if (solvedNow) {
 
         console.log(
-          'Solved successfully:',
+          'Solved:',
           game.name
         );
 
       } else {
 
         console.log(
-          'Solver ran but solve state not detected:',
+          'No solved state detected:',
           game.name
         );
       }
@@ -177,13 +166,13 @@ const solverScript =
     }
   }
 
-  ////////////////////////////////////////////////////////
-  // FINISH
-  ////////////////////////////////////////////////////////
+  //////////////////////////////////////////////////////
+  // DONE
+  //////////////////////////////////////////////////////
 
-  console.log(
-    '\\nAll games processed'
-  );
+  console.log('\n==============================');
+  console.log('All games processed');
+  console.log('Closing browser');
 
   await browser.close();
 
