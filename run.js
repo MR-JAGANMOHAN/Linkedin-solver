@@ -1,5 +1,5 @@
 import { chromium } from 'playwright';
-import path from 'path';
+import fs from 'fs';
 
 const games = [
   'https://www.linkedin.com/games/pinpoint/',
@@ -11,37 +11,50 @@ const games = [
   'https://www.linkedin.com/games/patches/'
 ];
 
-const extensionPath =
-  path.join(process.cwd(), 'extension');
-
 (async () => {
 
-  console.log('Launching Chromium');
+  const browser =
+    await chromium.launch({
+      headless: true
+    });
 
   const context =
-    await chromium.launchPersistentContext(
-      './profile',
-      {
-        headless: false,
+    await browser.newContext({
+      storageState: 'cookies.json'
+    });
 
-        storageState: 'cookies.json',
+  ////////////////////////////////////////////////////
+  // LOAD GAMEHELPER BEFORE PAGE LOAD
+  ////////////////////////////////////////////////////
 
-        args: [
-          `--disable-extensions-except=${extensionPath}`,
-          `--load-extension=${extensionPath}`
-        ]
-      }
+  const helper =
+    fs.readFileSync(
+      './extension/gameHelper.js',
+      'utf8'
     );
+
+  await context.addInitScript({
+    content: helper
+  });
 
   const page =
     await context.newPage();
 
+  ////////////////////////////////////////////////////
+  // PIPE BROWSER LOGS TO GITHUB LOGS
+  ////////////////////////////////////////////////////
+
   page.on('console', msg => {
+
     console.log(
       '[BROWSER]',
       msg.text()
     );
   });
+
+  ////////////////////////////////////////////////////
+  // PROCESS GAMES
+  ////////////////////////////////////////////////////
 
   for (const game of games) {
 
@@ -59,14 +72,17 @@ const extensionPath =
       await page.goto(
         game,
         {
-          waitUntil:
-            'domcontentloaded',
+          waitUntil: 'domcontentloaded',
           timeout: 30000
         }
       );
 
+      console.log(
+        'Page loaded'
+      );
+
       await page.waitForTimeout(
-        8000
+        12000
       );
 
       console.log(
@@ -87,6 +103,6 @@ const extensionPath =
     }
   }
 
-  await context.close();
+  await browser.close();
 
 })();
