@@ -1,0 +1,112 @@
+name: LinkedIn Daily Games
+
+on:
+  # 05:00 IST (23:30 UTC). Change this cron if you want another daily time.
+  schedule:
+    - cron: '30 23 * * *'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Upstream linkedin-puzzles git ref (tag/branch/commit)'
+        required: false
+        default: 'main'
+      rebuild:
+        description: 'Rebuild the upstream Docker image'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: linkedin-daily
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: https://github.com/nqrwhal/linkedin-puzzles.git
+  UPSTREAM_REF: ${{ github.event.inputs.ref || 'main' }}
+  DATA_DIR: upstream/service/data
+  PROFILE_ARTIFACT: linkedin-profile
+
+jobs:
+  solve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout automation wrapper
+        uses: actions/checkout@v4
+
+      - name: Clone upstream solver
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --branch "$UPSTREAM_REF" "$UPSTREAM_REPO" upstream
+          mkdir -p "$DATA_DIR/home"
+
+      - name: Restore previous signed-in browser profile
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          last_run="$(gh run list \
+            --workflow daily.yml \
+            --status success \
+            --limit 10 \
+            --json databaseId,headBranch \
+            --jq '.[].databaseId' | head -n 1 || true)"
+
+          rm -rf restore-profile
+          mkdir -p restore-profile
+
+          if [[ -n "$last_run" ]] && gh run download "$last_run" \
+              --name "$PROFILE_ARTIFACT" \
+              --dir restore-profile; then
+            echo "Restored profile from successful run $last_run"
+          else
+            echo 'No reusable Actions profile artifact found; trying the one-time seed release.'
+            gh release download profile-seed \
+              --pattern 'linkedin-profile-bootstrap.tar.gz' \
+              --dir restore-profile
+            tar -xzf restore-profile/linkedin-profile-bootstrap.tar.gz -C "$DATA_DIR/home"
+            rm -f restore-profile/linkedin-profile-bootstrap.tar.gz
+          fi
+
+          cp -a restore-profile/. "$DATA_DIR/home/" 2>/dev/null || true
+          chmod -R go-rwx "$DATA_DIR/home"
+
+      - name: Build upstream headless solver
+        working-directory: upstream/service
+        run: docker compose build solver
+
+      - name: Solve all LinkedIn games
+        working-directory: upstream/service
+        env:
+          CI: 'true'
+        run: ./puzzles run
+
+      - name: Upload updated signed-in browser profile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linkedin-profile
+          path: upstream/service/data/home/
+          include-hidden-files: true
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 30
+
+      - name: Upload run report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linkedin-run-${{ github.run_number }}
+          path: |
+            upstream/service/data/latest.json
+            upstream/service/data/runs/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 30
