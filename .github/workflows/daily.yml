@@ -81,7 +81,11 @@ jobs:
             rm -f linkedin-storage-state.json
           fi
 
-          chmod -R go-rwx "$DATA_DIR/profile"
+          # The upstream solver container runs as UID/GID 1000. GitHub's runner
+          # owns files created above, so hand the mounted browser profile to the
+          # container user before Docker starts.
+          sudo chown -R 1000:1000 "$DATA_DIR/profile"
+          sudo chmod -R u+rwX,go-rwx "$DATA_DIR/profile"
 
       - name: Build upstream headless solver
         working-directory: upstream/service
