@@ -1,85 +1,74 @@
-# LinkedIn Daily Games — GitHub Actions runner
+# LinkedIn Daily Games — GitHub Actions
 
-This is a GitHub-Actions wrapper around [nqrwhal/linkedin-puzzles](https://github.com/nqrwhal/linkedin-puzzles).
+This private repository schedules the headless service from [nqrwhal/linkedin-puzzles](https://github.com/nqrwhal/linkedin-puzzles) on GitHub Actions.
 
-The upstream project already contains a headless Playwright/Docker service that runs all eight supported LinkedIn games sequentially. This wrapper adds the missing **scheduled GitHub Actions layer** and persists the signed-in Chromium profile between runs.
+## What happens
 
-## What it does
+Every day at **05:00 IST (23:30 UTC)**:
 
-Every day the workflow:
+1. GitHub starts an Ubuntu runner.
+2. The upstream solver is cloned and built.
+3. A previously persisted Chromium profile is restored when available.
+4. On the first run, the profile is seeded from the `LINKEDIN_STORAGE_STATE_B64` GitHub Secret.
+5. The upstream service runs all supported games.
+6. The updated browser profile is saved as a private Actions artifact for the next run.
+7. The runner shuts down.
 
-1. Starts an Ubuntu GitHub-hosted runner.
-2. Downloads the latest successful run's private Chromium profile artifact.
-3. Clones the upstream LinkedIn puzzle solver.
-4. Builds its headless Playwright/Docker image.
-5. Runs `./service/puzzles run`, which attempts all eight games and independently verifies completion.
-6. Uploads the updated Chromium profile for the next run.
-7. Uploads the run report for debugging.
-8. The runner disappears after the job finishes — no VPS/server stays online.
+No VPS or always-on server is required.
 
-The default schedule is **05:00 India Standard Time (IST)** (`23:30 UTC`).
+## One-time authentication setup
 
-## Important: one-time login bootstrap
+The repository does **not** contain LinkedIn cookies, passwords, or a browser profile.
 
-A GitHub-hosted runner cannot show you an interactive LinkedIn login window. You therefore need to seed the persistent browser profile once.
+Create a Playwright `storageState.json` on your own machine after signing into LinkedIn, then base64-encode that file and add the result as this repository secret:
 
-The helper starts the upstream project's temporary noVNC login container and lets you sign into LinkedIn once:
+`LINKEDIN_STORAGE_STATE_B64`
+
+For example, on Git Bash:
 
 ```bash
-./scripts/bootstrap-profile.sh
+base64 -w 0 storageState.json > storageState.b64
 ```
 
-This creates:
+On PowerShell:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes('.\storageState.json')) | Set-Content -NoNewline storageState.b64
+```
+
+Copy the contents of `storageState.b64` into:
+
+**GitHub → Settings → Secrets and variables → Actions → New repository secret**
+
+Name:
 
 ```text
-linkedin-profile-bootstrap.tar.gz
+LINKEDIN_STORAGE_STATE_B64
 ```
 
-That archive contains signed-in Chromium profile data. **Treat it like a password/session credential. Do not commit it.**
+Value: the complete base64 string.
 
-### Put the seed in a private GitHub Release
+Treat the storage-state file and secret like a password. Do not put either in the repository, an issue, a workflow log, or a public release.
 
-From a machine with the GitHub CLI authenticated to your private repository:
+## Run it
 
-```bash
-gh release create profile-seed \
-  --repo YOUR_GITHUB_USER/YOUR_REPOSITORY \
-  --title "Private LinkedIn profile seed" \
-  --notes "Private bootstrap asset; contains signed-in browser session data." \
-  linkedin-profile-bootstrap.tar.gz
-```
+After adding the secret, open:
 
-The workflow will use that release asset only when there is no previous successful `linkedin-profile` artifact. After the first successful daily run, the updated profile is stored as the `linkedin-profile` Actions artifact and the release seed is no longer used.
+**Actions → LinkedIn Daily Games → Run workflow**
 
-Keep the repository private and do not share the `profile-seed` release asset.
+The first successful run creates the `linkedin-profile` artifact. Later runs restore that profile automatically.
 
-## Workflow schedule
-
-Edit `.github/workflows/daily.yml`:
+The scheduled run is:
 
 ```yaml
 schedule:
   - cron: '30 23 * * *'
 ```
 
-GitHub cron is UTC. `23:30 UTC` is `05:00 IST` on the following day.
+## Important limitation
 
-You can also start it manually from the Actions tab with **Run workflow**.
+GitHub-hosted runners are ephemeral and can use different network addresses. LinkedIn can expire a session or request an additional security check. This workflow cannot solve a CAPTCHA or an unexpected interactive identity challenge. If the saved session stops working, create a fresh storage state locally and replace `LINKEDIN_STORAGE_STATE_B64`.
 
 ## Upstream solver
 
-The wrapper intentionally does not copy/fork the upstream solver implementation into this repository. It clones the upstream project at runtime so solver fixes can be picked up without duplicating a large codebase.
-
-For reproducibility, set `UPSTREAM_REF` to a specific upstream commit SHA instead of `main` once you have a version you trust.
-
-## Reliability notes
-
-GitHub-hosted runners are ephemeral and can come from different IP addresses. LinkedIn may expire or challenge a session because of account-security checks. There is no supported way for this workflow to solve a CAPTCHA or interactively complete an unexpected identity challenge.
-
-The profile artifact is persisted for 30 days. If GitHub artifact retention or a failed run removes the last usable profile, the account will need to be bootstrapped again.
-
-For maximum reliability, a persistent self-hosted runner/server with the upstream profile stored on disk is still better than GitHub-hosted runners. This repository is specifically for the **no-always-on-server / scheduled GitHub Actions** approach.
-
-## Privacy
-
-The `linkedin-profile` artifact contains signed-in browser session data. Keep this repository private and limit access. Never publish the artifact, workflow logs containing secrets, or the bootstrap archive.
+The solver implementation is intentionally obtained from the upstream repository at runtime rather than copied here. The workflow accepts an optional branch/tag/commit ref when manually started.
