@@ -77,6 +77,7 @@ jobs:
 
             echo 'Seeding the Chromium profile from LINKEDIN_STORAGE_STATE_B64.'
             npm ci --prefix upstream/service --omit=dev
+            npx --prefix upstream/service playwright install chromium
             node scripts/seed-profile-from-storage-state.cjs
             rm -f linkedin-storage-state.json
           fi
@@ -104,7 +105,7 @@ jobs:
           name: linkedin-profile
           path: upstream/service/data/profile/
           include-hidden-files: true
-          if-no-files-found: error
+          if-no-files-found: warn
           overwrite: true
           retention-days: 30
 
