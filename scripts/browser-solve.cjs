@@ -73,6 +73,30 @@ async function findSolverFrame(page, timeoutMs = 15000) {
   throw new Error('The upstream extension did not inject its solver panel into this game page.');
 }
 
+async function clickStartGame(page, label) {
+  const deadline = Date.now() + 20000;
+  while (Date.now() < deadline) {
+    for (const frame of page.frames()) {
+      try {
+        const buttons = frame.locator('button');
+        const count = await buttons.count();
+        for (let i = 0; i < count; i += 1) {
+          const button = buttons.nth(i);
+          const text = (await button.textContent() || '').trim().replace(/\s+/g, ' ');
+          if (/^start game$/i.test(text) && await button.isVisible()) {
+            console.log(`${label}: clicking Start game.`);
+            await button.click();
+            await sleep(1200);
+            return true;
+          }
+        }
+      } catch {}
+    }
+    await sleep(250);
+  }
+  return false;
+}
+
 async function waitForCompletion(page, timeoutMs = 60000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -151,6 +175,11 @@ async function waitForCompletion(page, timeoutMs = 60000) {
           results.push(entry);
           continue;
         }
+
+        // LinkedIn's game landing page can show a Start game button before the
+        // actual puzzle state exists. The extension's solver requires the board
+        // to be started/loaded first.
+        await clickStartGame(page, label);
 
         const solverFrame = await findSolverFrame(page, 20000);
         const solverButton = solverFrame.locator('#linkedin-logic-solver .lls__solve');
