@@ -92,7 +92,7 @@ jobs:
         run: |
           set -euo pipefail
           docker compose run --rm -T --entrypoint node solver - <<'NODE'
-          const { chromium } = require('playwright');
+          const { chromium } = require('/app/service/node_modules/playwright');
 
           (async () => {
             const context = await chromium.launchPersistentContext('/data/profile', {
