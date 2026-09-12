@@ -86,11 +86,64 @@ jobs:
         working-directory: upstream/service
         run: docker compose build solver
 
+      - name: Diagnose LinkedIn authentication
+        working-directory: upstream/service
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose run --rm -T solver node - <<'NODE'
+          const { chromium } = require('playwright');
+
+          (async () => {
+            const context = await chromium.launchPersistentContext('/data/profile', {
+              headless: true,
+              viewport: { width: 1360, height: 800 },
+              locale: 'en-US',
+              timezoneId: 'America/Los_Angeles',
+            });
+
+            const cookies = await context.cookies('https://www.linkedin.com');
+            const authCookies = cookies.filter(c => ['li_at', 'JSESSIONID'].includes(c.name));
+            console.log(`AUTH_COOKIE_PRESENT li_at=${authCookies.some(c => c.name === 'li_at')} JSESSIONID=${authCookies.some(c => c.name === 'JSESSIONID')}`);
+
+            const page = await context.newPage();
+            page.on('response', response => {
+              const url = response.url();
+              if (url.includes('linkedin.com') && [200, 301, 302, 303, 307, 308].includes(response.status())) {
+                console.log(`LINKEDIN_RESPONSE status=${response.status()} url=${new URL(url).pathname}`);
+              }
+            });
+
+            try {
+              await page.goto('https://www.linkedin.com/feed/', { waitUntil: 'domcontentloaded', timeout: 45000 });
+              console.log(`AUTH_CHECK final_url=${new URL(page.url()).pathname} title=${JSON.stringify(await page.title())}`);
+              const signedIn = await page.locator('input[name="session_key"]').count() === 0 &&
+                !/\/login|\/checkpoint|\/uas\/login/i.test(page.url());
+              console.log(`AUTH_CHECK signed_in=${signedIn}`);
+            } catch (error) {
+              console.log(`AUTH_CHECK navigation_error=${JSON.stringify(String(error.message).slice(0, 300))}`);
+            } finally {
+              await page.close();
+              await context.close();
+            }
+          })().catch(error => {
+            console.error(`AUTH_CHECK fatal=${JSON.stringify(String(error.message).slice(0, 300))}`);
+            process.exit(1);
+          });
+          NODE
+
       - name: Solve all LinkedIn games
         working-directory: upstream/service
         env:
           CI: 'true'
         run: ./puzzles run
+
+      - name: Normalize generated file permissions
+        if: always()
+        shell: bash
+        run: |
+          sudo chown -R 1000:1000 "$DATA_DIR" || true
+          sudo chmod -R u+rwX,go-rwx "$DATA_DIR" || true
 
       - name: Persist updated signed-in browser profile
         if: success()
