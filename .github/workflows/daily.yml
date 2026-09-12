@@ -29,15 +29,14 @@ jobs:
       - name: Checkout wrapper
         uses: actions/checkout@v4
 
-      - name: Clone upstream solver
+      - name: Clone upstream extension
         shell: bash
         run: |
           set -euo pipefail
           git clone --depth 1 --branch "$UPSTREAM_REF" "$UPSTREAM_REPO" upstream
-          mkdir -p "$DATA_DIR/profile"
-          mkdir -p "$DATA_DIR/home"
+          mkdir -p "$DATA_DIR/profile" "$DATA_DIR/home" "$DATA_DIR/browser-run"
 
-      - name: Restore previous signed-in profile
+      - name: Restore or seed signed-in browser profile
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -71,82 +70,28 @@ jobs:
             printf '%s' "${{ secrets.LINKEDIN_STORAGE_STATE_B64 }}" | base64 --decode > linkedin-storage-state.json
             chmod 600 linkedin-storage-state.json
 
-            echo 'Seeding the Chromium profile from LINKEDIN_STORAGE_STATE_B64.'
+            echo 'Seeding Chromium profile from LINKEDIN_STORAGE_STATE_B64.'
             npm ci --prefix upstream/service --omit=dev
             npx --prefix upstream/service playwright install chromium
             node scripts/seed-profile-from-storage-state.cjs
             test -n "$(find "$DATA_DIR/profile" -mindepth 1 -print -quit)"
             rm -f linkedin-storage-state.json
+          else
+            npm ci --prefix upstream/service --omit=dev
           fi
 
-          sudo chown -R 1000:1000 "$DATA_DIR"
-          sudo chmod -R u+rwX,go-rwx "$DATA_DIR"
-
-      - name: Build upstream headless solver
-        working-directory: upstream/service
-        run: docker compose build solver
-
-      - name: Diagnose LinkedIn authentication
-        working-directory: upstream/service
+      - name: Run real browser with upstream extension
         shell: bash
+        env:
+          DISPLAY: :99
         run: |
           set -euo pipefail
-          docker compose run --rm -T --entrypoint node solver - <<'NODE'
-          const { chromium } = require('/app/service/node_modules/playwright');
-
-          (async () => {
-            const context = await chromium.launchPersistentContext('/data/profile', {
-              headless: true,
-              viewport: { width: 1360, height: 800 },
-              locale: 'en-US',
-              timezoneId: 'America/Los_Angeles',
-            });
-
-            const cookies = await context.cookies('https://www.linkedin.com');
-            console.log(`AUTH_COOKIE_PRESENT li_at=${cookies.some(c => c.name === 'li_at')} JSESSIONID=${cookies.some(c => c.name === 'JSESSIONID')}`);
-
-            const page = await context.newPage();
-            page.on('response', response => {
-              const url = response.url();
-              if (url.includes('linkedin.com') && [200, 301, 302, 303, 307, 308].includes(response.status())) {
-                console.log(`LINKEDIN_RESPONSE status=${response.status()} url=${new URL(url).pathname}`);
-              }
-            });
-
-            try {
-              await page.goto('https://www.linkedin.com/feed/', { waitUntil: 'domcontentloaded', timeout: 45000 });
-              const finalPath = new URL(page.url()).pathname;
-              const title = await page.title();
-              console.log(`AUTH_CHECK final_url=${finalPath} title=${JSON.stringify(title)}`);
-              const signedIn = await page.locator('input[name="session_key"]').count() === 0 &&
-                !/\/login|\/checkpoint|\/uas\/login/i.test(page.url());
-              console.log(`AUTH_CHECK signed_in=${signedIn}`);
-              if (!signedIn) process.exitCode = 2;
-            } catch (error) {
-              console.log(`AUTH_CHECK navigation_error=${JSON.stringify(String(error.message).slice(0, 300))}`);
-              process.exitCode = 3;
-            } finally {
-              await page.close();
-              await context.close();
-            }
-          })().catch(error => {
-            console.error(`AUTH_CHECK fatal=${JSON.stringify(String(error.message).slice(0, 300))}`);
-            process.exit(1);
-          });
-          NODE
-
-      - name: Solve all LinkedIn games
-        working-directory: upstream/service
-        env:
-          CI: 'true'
-        run: ./puzzles run
-
-      - name: Normalize generated file permissions
-        if: always()
-        shell: bash
-        run: |
-          sudo chown -R 1000:1000 "$DATA_DIR" || true
-          sudo chmod -R u+rwX,go-rwx "$DATA_DIR" || true
+          mkdir -p "$DATA_DIR/browser-run"
+          Xvfb :99 -screen 0 1360x900x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
+          xvfb_pid=$!
+          trap 'kill "$xvfb_pid" 2>/dev/null || true' EXIT
+          for n in {1..50}; do [[ -S /tmp/.X11-unix/X99 ]] && break; sleep .1; done
+          node scripts/browser-solve.cjs
 
       - name: Persist updated signed-in browser profile
         if: success()
@@ -159,14 +104,12 @@ jobs:
           overwrite: true
           retention-days: 30
 
-      - name: Upload run report
+      - name: Upload browser run report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: linkedin-run-${{ github.run_number }}
-          path: |
-            upstream/service/data/latest.json
-            upstream/service/data/runs/
+          name: linkedin-browser-run-${{ github.run_number }}
+          path: upstream/service/data/browser-run/
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 30
