@@ -1,4 +1,6 @@
 upstream/
-linkedin-profile-bootstrap.tar.gz
 restore-profile/
+linkedin-storage-state.json
+storageState.json
+storageState.b64
 *.log
