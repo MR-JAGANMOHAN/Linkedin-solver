@@ -94,7 +94,20 @@ async function clickStartGame(page, label) {
     }
     await sleep(250);
   }
+  console.log(`${label}: Start game button not found; continuing with the current page state.`);
   return false;
+}
+
+async function getSolverStatus(page) {
+  for (const frame of page.frames()) {
+    try {
+      const status = frame.locator('#linkedin-logic-solver .lls__status');
+      if (await status.count()) {
+        return (await status.first().textContent() || '').trim();
+      }
+    } catch {}
+  }
+  return '';
 }
 
 async function waitForCompletion(page, timeoutMs = 60000) {
@@ -118,6 +131,16 @@ async function waitForCompletion(page, timeoutMs = 60000) {
     await sleep(500);
   }
   return false;
+}
+
+async function reloadAndRetry(page, label, attempt) {
+  console.log(`${label}: puzzle data was unavailable; reloading page for retry ${attempt}.`);
+  await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+  if (isAuthFailure(page.url())) {
+    throw new Error(`LinkedIn authentication failed after reload; redirected to ${page.url()}`);
+  }
+  await sleep(1500);
+  await clickStartGame(page, label);
 }
 
 (async () => {
@@ -181,17 +204,41 @@ async function waitForCompletion(page, timeoutMs = 60000) {
         // to be started/loaded first.
         await clickStartGame(page, label);
 
-        const solverFrame = await findSolverFrame(page, 20000);
-        const solverButton = solverFrame.locator('#linkedin-logic-solver .lls__solve');
-        await solverButton.waitFor({ state: 'visible', timeout: 15000 });
+        let completed = false;
+        let lastStatus = '';
+        for (let attempt = 1; attempt <= 2 && !completed; attempt += 1) {
+          const solverFrame = await findSolverFrame(page, 20000);
+          const solverButton = solverFrame.locator('#linkedin-logic-solver .lls__solve');
+          await solverButton.waitFor({ state: 'visible', timeout: 15000 });
 
-        console.log(`${label}: clicking Solve by request.`);
-        await solverButton.click();
+          console.log(`${label}: clicking Solve by request (attempt ${attempt}/2).`);
+          await solverButton.click();
 
-        const completed = await waitForCompletion(page, 75000);
+          try {
+            completed = await waitForCompletion(page, 75000);
+          } catch (error) {
+            lastStatus = await getSolverStatus(page);
+            if (attempt === 1 && /puzzle data is unavailable/i.test(lastStatus)) {
+              await reloadAndRetry(page, label, 2);
+              continue;
+            }
+            throw error;
+          }
+
+          if (!completed) {
+            lastStatus = await getSolverStatus(page);
+            if (attempt === 1 && /puzzle data is unavailable/i.test(lastStatus)) {
+              await reloadAndRetry(page, label, 2);
+              continue;
+            }
+            break;
+          }
+        }
+
         entry.url = page.url();
         if (!completed) {
-          throw new Error(`Solve request finished without a verified completion state. Final URL: ${page.url()}`);
+          const detail = lastStatus ? ` Status: ${lastStatus}` : '';
+          throw new Error(`Solve request finished without a verified completion state. Final URL: ${page.url()}.${detail}`);
         }
 
         entry.ok = true;
