@@ -1,7 +1,6 @@
 name: LinkedIn Daily Games
 
 on:
-  # 05:00 IST (23:30 UTC).
   schedule:
     - cron: '30 23 * * *'
   workflow_dispatch:
@@ -15,10 +14,6 @@ permissions:
   contents: read
   actions: read
 
-concurrency:
-  group: linkedin-daily
-  cancel-in-progress: false
-
 env:
   UPSTREAM_REPO: https://github.com/nqrwhal/linkedin-puzzles.git
   UPSTREAM_REF: ${{ github.event.inputs.ref || 'main' }}
@@ -28,7 +23,7 @@ env:
 jobs:
   solve:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - name: Checkout wrapper
@@ -79,12 +74,10 @@ jobs:
             npm ci --prefix upstream/service --omit=dev
             npx --prefix upstream/service playwright install chromium
             node scripts/seed-profile-from-storage-state.cjs
+            test -n "$(find "$DATA_DIR/profile" -mindepth 1 -print -quit)"
             rm -f linkedin-storage-state.json
           fi
 
-          # The upstream solver container runs as UID/GID 1000. GitHub's runner
-          # owns files created above, so hand the mounted browser profile to the
-          # container user before Docker starts.
           sudo chown -R 1000:1000 "$DATA_DIR/profile"
           sudo chmod -R u+rwX,go-rwx "$DATA_DIR/profile"
 
@@ -99,13 +92,13 @@ jobs:
         run: ./puzzles run
 
       - name: Persist updated signed-in browser profile
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: linkedin-profile
           path: upstream/service/data/profile/
           include-hidden-files: true
-          if-no-files-found: warn
+          if-no-files-found: error
           overwrite: true
           retention-days: 30
 
