@@ -1,7 +1,7 @@
 name: LinkedIn Daily Games
 
 on:
-  # 05:00 IST (23:30 UTC). Change this cron if you want another daily time.
+  # 05:00 IST (23:30 UTC).
   schedule:
     - cron: '30 23 * * *'
   workflow_dispatch:
@@ -10,11 +10,6 @@ on:
         description: 'Upstream linkedin-puzzles git ref (tag/branch/commit)'
         required: false
         default: 'main'
-      rebuild:
-        description: 'Rebuild the upstream Docker image'
-        required: false
-        type: boolean
-        default: true
 
 permissions:
   contents: read
@@ -36,7 +31,7 @@ jobs:
     timeout-minutes: 25
 
     steps:
-      - name: Checkout automation wrapper
+      - name: Checkout wrapper
         uses: actions/checkout@v4
 
       - name: Clone upstream solver
@@ -44,39 +39,49 @@ jobs:
         run: |
           set -euo pipefail
           git clone --depth 1 --branch "$UPSTREAM_REF" "$UPSTREAM_REPO" upstream
-          mkdir -p "$DATA_DIR/home"
+          mkdir -p "$DATA_DIR/profile"
 
-      - name: Restore previous signed-in browser profile
+      - name: Restore previous signed-in profile
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          rm -rf restore-profile
+          mkdir -p restore-profile
+
           last_run="$(gh run list \
             --workflow daily.yml \
             --status success \
             --limit 10 \
-            --json databaseId,headBranch \
+            --json databaseId \
             --jq '.[].databaseId' | head -n 1 || true)"
 
-          rm -rf restore-profile
-          mkdir -p restore-profile
-
+          restored='false'
           if [[ -n "$last_run" ]] && gh run download "$last_run" \
               --name "$PROFILE_ARTIFACT" \
               --dir restore-profile; then
             echo "Restored profile from successful run $last_run"
-          else
-            echo 'No reusable Actions profile artifact found; trying the one-time seed release.'
-            gh release download profile-seed \
-              --pattern 'linkedin-profile-bootstrap.tar.gz' \
-              --dir restore-profile
-            tar -xzf restore-profile/linkedin-profile-bootstrap.tar.gz -C "$DATA_DIR/home"
-            rm -f restore-profile/linkedin-profile-bootstrap.tar.gz
+            cp -a restore-profile/. "$DATA_DIR/profile/"
+            restored='true'
           fi
 
-          cp -a restore-profile/. "$DATA_DIR/home/" 2>/dev/null || true
-          chmod -R go-rwx "$DATA_DIR/home"
+          if [[ "$restored" != 'true' ]]; then
+            if [[ -z "${{ secrets.LINKEDIN_STORAGE_STATE_B64 }}" ]]; then
+              echo 'ERROR: GitHub Secret LINKEDIN_STORAGE_STATE_B64 is not configured.' >&2
+              exit 1
+            fi
+
+            printf '%s' "${{ secrets.LINKEDIN_STORAGE_STATE_B64 }}" | base64 --decode > linkedin-storage-state.json
+            chmod 600 linkedin-storage-state.json
+
+            echo 'Seeding the Chromium profile from LINKEDIN_STORAGE_STATE_B64.'
+            npm ci --prefix upstream/service --omit=dev
+            node scripts/seed-profile-from-storage-state.cjs
+            rm -f linkedin-storage-state.json
+          fi
+
+          chmod -R go-rwx "$DATA_DIR/profile"
 
       - name: Build upstream headless solver
         working-directory: upstream/service
@@ -88,12 +93,12 @@ jobs:
           CI: 'true'
         run: ./puzzles run
 
-      - name: Upload updated signed-in browser profile
+      - name: Persist updated signed-in browser profile
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: linkedin-profile
-          path: upstream/service/data/home/
+          path: upstream/service/data/profile/
           include-hidden-files: true
           if-no-files-found: error
           overwrite: true
