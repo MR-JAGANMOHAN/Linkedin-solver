@@ -35,6 +35,9 @@ jobs:
           set -euo pipefail
           git clone --depth 1 --branch "$UPSTREAM_REF" "$UPSTREAM_REPO" upstream
           mkdir -p "$DATA_DIR/profile"
+          mkdir -p "$DATA_DIR/home"
+          sudo chown -R 1000:1000 "$DATA_DIR"
+          sudo chmod -R u+rwX,go-rwx "$DATA_DIR"
 
       - name: Restore previous signed-in profile
         shell: bash
@@ -78,8 +81,8 @@ jobs:
             rm -f linkedin-storage-state.json
           fi
 
-          sudo chown -R 1000:1000 "$DATA_DIR/profile"
-          sudo chmod -R u+rwX,go-rwx "$DATA_DIR/profile"
+          sudo chown -R 1000:1000 "$DATA_DIR"
+          sudo chmod -R u+rwX,go-rwx "$DATA_DIR"
 
       - name: Build upstream headless solver
         working-directory: upstream/service
